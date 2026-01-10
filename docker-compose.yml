@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:15
+    container_name: institute_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: institute
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    container_name: institute_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/institute
+    depends_on:
+      - db
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

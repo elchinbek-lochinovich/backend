@@ -1,0 +1,29 @@
+﻿version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: institute_db
+    restart: always
+    environment:
+      POSTGRES_DB: institute
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build: .
+    container_name: institute_api
+    restart: always
+    env_file:
+      - .env.production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

@@ -1,0 +1,272 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  RECTOR
+  TEACHER
+  STUDENT
+}
+
+model User {
+  id             Int             @id @default(autoincrement())
+  email          String          @unique
+  password       String
+  role           Role
+  createdAt      DateTime        @default(now())
+  teacherProfile TeacherProfile?
+  studentProfile StudentProfile?
+
+  refreshTokens RefreshToken[]
+}
+
+model TeacherProfile {
+  id       Int     @id @default(autoincrement())
+  userId   Int     @unique
+  fullName String
+  phone    String?
+
+  departmentName String? @map("department")
+
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+
+  assignments TeachingAssignment[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudentProfile {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique
+  fullName    String
+  phone       String?
+  course      Int?
+  groupId     Int?
+  group       Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  contractSum Int?
+  debt        Int?
+  createdAt   DateTime @default(now())
+
+  attendances Attendance[]
+  grades      Grade[]
+
+  analytics StudentAnalytics[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Faculty {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  departments Department[]
+}
+
+model Department {
+  id          Int      @id @default(autoincrement())
+  facultyId   Int
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  faculty Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  groups  Group[]
+
+  teachers TeacherProfile[]
+
+  @@unique([facultyId, name])
+}
+
+model Group {
+  id           Int      @id @default(autoincrement())
+  departmentId Int
+  name         String
+  course       Int
+  year         Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  students StudentProfile[]
+
+  assignments TeachingAssignment[]
+
+  @@unique([departmentId, name])
+}
+
+model Subject {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments TeachingAssignment[]
+
+  @@unique([name])
+}
+
+model TeachingAssignment {
+  id            Int @id @default(autoincrement())
+  subjectId     Int
+  groupId       Int
+  teacherUserId Int // TeacherProfile.userId ga bog'laymiz (unique bo'lishi kerak)
+
+  academicYear Int? // 2025
+  semester     Int? // 1 yoki 2
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  teacher TeacherProfile @relation(fields: [teacherUserId], references: [userId], onDelete: Cascade)
+
+  schedules Schedule[]
+
+  grades Grade[]
+
+  @@unique([subjectId, groupId, teacherUserId])
+}
+
+model Schedule {
+  id           Int      @id @default(autoincrement())
+  assignmentId Int
+  dayOfWeek    Int // 1=Mon ... 7=Sun
+  startTime    String // "09:00"
+  endTime      String // "10:20"
+  room         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignment TeachingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  attendances Attendance[]
+
+  @@unique([assignmentId, dayOfWeek, startTime])
+  @@index([assignmentId])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model Attendance {
+  id            Int              @id @default(autoincrement())
+  scheduleId    Int
+  date          DateTime // dars sanasi
+  studentUserId Int
+  status        AttendanceStatus @default(PRESENT)
+  note          String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  schedule Schedule       @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  student  StudentProfile @relation(fields: [studentUserId], references: [userId], onDelete: Cascade)
+
+  @@unique([scheduleId, date, studentUserId])
+  @@index([studentUserId])
+}
+
+model Grade {
+  id            Int      @id @default(autoincrement())
+  assignmentId  Int
+  studentUserId Int
+  kind          String // "quiz" | "midterm" | "final" | "homework" ...
+  score         Float
+  maxScore      Float    @default(100)
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment TeachingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    StudentProfile     @relation(fields: [studentUserId], references: [userId], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([studentUserId])
+}
+
+model StudentAnalytics {
+  id            Int      @id @default(autoincrement())
+  studentUserId Int
+  fromDate      DateTime
+  toDate        DateTime
+
+  attendanceRate Float // 0..1
+  avgScore       Float? // 0..100 (yoki maxScore normalize)
+  riskScore      Float // 0..1
+
+  insights  Json? // tavsiyalar/izohlar
+  createdAt DateTime @default(now())
+
+  student StudentProfile @relation(fields: [studentUserId], references: [userId], onDelete: Cascade)
+
+  @@unique([studentUserId, fromDate, toDate])
+  @@index([studentUserId])
+  @@index([studentUserId, toDate])
+  @@index([studentUserId, createdAt])
+}
+
+model GroupAiSummary {
+  id        Int      @id @default(autoincrement())
+  groupId   Int
+  fromDate  DateTime
+  toDate    DateTime
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([groupId, fromDate, toDate])
+  @@index([groupId, toDate])
+}
+
+model RefreshToken {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  userAgent  String?
+  ip         String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AnalyticsSnapshot {
+  id        Int      @id @default(autoincrement())
+  scope     String   // institute | faculty | group | student
+  scopeId   Int?
+  date      DateTime
+  payload   Json
+
+  createdAt DateTime @default(now())
+
+  @@index([scope, scopeId, date])
+}
+
